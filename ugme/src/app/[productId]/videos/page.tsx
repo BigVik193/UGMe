@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, use } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 interface VideoOperation {
@@ -22,7 +22,8 @@ interface Product {
   amazon_url: string
 }
 
-export default function VideoGenerationPage({ params }: { params: { productId: string } }) {
+export default function VideoGenerationPage({ params }: { params: Promise<{ productId: string }> }) {
+  const { productId } = use(params)
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -33,6 +34,9 @@ export default function VideoGenerationPage({ params }: { params: { productId: s
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [isGenerating, setIsGenerating] = useState(true)
+  const [isConcatenating, setIsConcatenating] = useState(false)
+  const [concatenatedVideoSessionId, setConcatenatedVideoSessionId] = useState<string | null>(null)
+  const [concatenationError, setConcatenationError] = useState('')
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -43,7 +47,7 @@ export default function VideoGenerationPage({ params }: { params: { productId: s
     if (user) {
       loadData()
     }
-  }, [user, authLoading, params.productId])
+  }, [user, authLoading, productId])
 
   const loadData = async () => {
     try {
@@ -53,7 +57,7 @@ export default function VideoGenerationPage({ params }: { params: { productId: s
       const { data: productData, error: productError } = await supabase
         .from('products')
         .select('*')
-        .eq('id', params.productId)
+        .eq('id', productId)
         .eq('user_id', user?.id)
         .single()
 
@@ -93,29 +97,77 @@ export default function VideoGenerationPage({ params }: { params: { productId: s
     }
   }
 
+  const concatenateVideos = async () => {
+    try {
+      setIsConcatenating(true)
+      setConcatenationError('')
+      
+      const completedOperations = operations.filter(op => op.status === 'completed' && op.videoUri)
+      
+      if (completedOperations.length !== 3) {
+        setConcatenationError('Not all videos are ready for concatenation')
+        return
+      }
+
+      // Sort by segment number to ensure correct order
+      const sortedOperations = completedOperations.sort((a, b) => a.segmentNumber - b.segmentNumber)
+      const videoUris = sortedOperations.map(op => op.videoUri!)
+      const sessionId = `concat_${Date.now()}_${Math.random().toString(36).substring(7)}`
+
+      const response = await fetch('/api/concatenate-videos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          videoUris,
+          sessionId
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to concatenate videos')
+      }
+
+      setConcatenatedVideoSessionId(sessionId)
+      console.log('Concatenation completed:', data)
+      
+    } catch (error) {
+      console.error('Concatenation error:', error)
+      setConcatenationError(error instanceof Error ? error.message : 'Failed to concatenate videos')
+    } finally {
+      setIsConcatenating(false)
+    }
+  }
+
   const pollVideoStatus = async (operationName: string, segmentNumber: number) => {
     try {
       const response = await fetch(`/api/check-operation?operation=${encodeURIComponent(operationName)}`)
       const data = await response.json()
       
       if (data.status === 'completed') {
-        setOperations(prev => prev.map(op => 
-          op.segmentNumber === segmentNumber 
-            ? { ...op, status: 'completed', videoUri: data.videoUri }
-            : op
-        ))
-
         // Check if all videos are completed
         setOperations(prev => {
-          const allCompleted = prev.every(op => 
-            op.segmentNumber === segmentNumber || op.status === 'completed'
+          const updatedOps = prev.map(op => 
+            op.segmentNumber === segmentNumber 
+              ? { ...op, status: 'completed', videoUri: data.videoUri }
+              : op
           )
+          
+          const allCompleted = updatedOps.every(op => op.status === 'completed')
           
           if (allCompleted) {
             setIsGenerating(false)
+            
+            // Auto-trigger concatenation when all videos are done
+            setTimeout(() => {
+              concatenateVideos()
+            }, 1000) // Small delay to ensure UI updates
           }
           
-          return prev
+          return updatedOps
         })
 
       } else if (data.status === 'error') {
@@ -140,6 +192,13 @@ export default function VideoGenerationPage({ params }: { params: { productId: s
   const downloadVideo = (videoUri: string, segmentNumber: number) => {
     window.open(`/api/download-video?uri=${encodeURIComponent(videoUri)}&download=true`, '_blank')
   }
+
+  const downloadConcatenatedVideo = () => {
+    if (concatenatedVideoSessionId) {
+      window.open(`/api/concatenate-videos?sessionId=${concatenatedVideoSessionId}`, '_blank')
+    }
+  }
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -294,6 +353,51 @@ export default function VideoGenerationPage({ params }: { params: { productId: s
                     <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-2"></div>
                     <p className="text-blue-700 font-medium">Generating your UGC videos... This may take several minutes.</p>
                   </div>
+                </div>
+              )}
+
+              {/* Concatenation Status and Download */}
+              {!isGenerating && (
+                <div className="mt-6">
+                  {isConcatenating && (
+                    <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl">
+                      <div className="flex items-center justify-center">
+                        <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+                        <p className="text-purple-700 font-medium">Combining all videos into one final video...</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {concatenationError && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                      <p className="text-red-700 font-medium">❌ Error: {concatenationError}</p>
+                      <button
+                        onClick={concatenateVideos}
+                        className="mt-2 bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 text-sm"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  )}
+
+                  {concatenatedVideoSessionId && !isConcatenating && (
+                    <div className="p-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl">
+                      <div className="text-center">
+                        <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <span className="text-white text-xl">🎬</span>
+                        </div>
+                        <h3 className="text-lg font-bold text-green-800 mb-2">Final Combined Video Ready!</h3>
+                        <p className="text-green-700 mb-4">Your 3 video segments have been combined into one seamless UGC video.</p>
+                        <button
+                          onClick={downloadConcatenatedVideo}
+                          className="bg-green-600 text-white py-3 px-6 rounded-lg hover:bg-green-700 font-medium flex items-center justify-center gap-2 mx-auto"
+                        >
+                          <span>📥</span>
+                          Download Final Video
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

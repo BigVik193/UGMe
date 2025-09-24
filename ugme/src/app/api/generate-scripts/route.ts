@@ -21,7 +21,7 @@ async function generateScriptSegments(productTitle: string, productDescription: 
       messages: [
         {
           role: "user",
-          content: `Create 3 UGC script segments (8 seconds each) for: ${productTitle}. Description: ${productDescription}. Return JSON array: ["segment1", "segment2", "segment3"]`
+          content: `Create 3 UGC script segments (8 seconds each) for: ${productTitle}. Description: ${productDescription}. Use a general name for the item instead of the exact Amazon product name since each segment must be said in 8 seconds aka max 12 words. Return JSON array: ["segment1", "segment2", "segment3"]`
         }
       ],
       max_tokens: 200,

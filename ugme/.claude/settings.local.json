@@ -6,7 +6,10 @@
       "Bash(npm uninstall:*)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "Bash(npx playwright:*)"
+      "Bash(npx playwright:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(node:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

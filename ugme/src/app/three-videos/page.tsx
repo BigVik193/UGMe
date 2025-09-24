@@ -19,6 +19,8 @@ export default function ThreeVideosGenerator() {
   const [operations, setOperations] = useState<VideoOperation[]>([]);
   const [loading, setLoading] = useState(false);
   const [overallStatus, setOverallStatus] = useState('');
+  const [sessionId, setSessionId] = useState('');
+  const [concatenationStatus, setConcatenationStatus] = useState<'idle' | 'concatenating' | 'ready' | 'error'>('idle');
 
   const generateThreeVideos = async () => {
     if (!character.trim() || !camera.trim() || dialogues.some(d => !d.trim())) {
@@ -33,6 +35,11 @@ export default function ThreeVideosGenerator() {
 
     setLoading(true);
     setOverallStatus('Starting 3 video generations...');
+    setConcatenationStatus('idle');
+    
+    // Generate a unique session ID for this batch
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setSessionId(newSessionId);
     
     try {
       const response = await fetch('/api/generate-three-videos', {
@@ -41,7 +48,7 @@ export default function ThreeVideosGenerator() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompts: fullPrompts,
+          dialogues: dialogues,
           imageUrl: imageUrl || undefined
         })
       });
@@ -119,6 +126,8 @@ export default function ThreeVideosGenerator() {
         setLoading(false);
         if (completedCount === totalCount) {
           setOverallStatus('🎉 All 3 videos completed successfully!');
+          // Automatically start concatenation
+          startConcatenation(prev);
         } else {
           setOverallStatus(`${completedCount} videos completed, ${errorCount} failed`);
         }
@@ -128,6 +137,54 @@ export default function ThreeVideosGenerator() {
       
       return prev;
     });
+  };
+
+  const startConcatenation = async (completedOperations: VideoOperation[]) => {
+    try {
+      setConcatenationStatus('concatenating');
+      setOverallStatus('🎬 Concatenating videos into one file...');
+      
+      // Get video URIs in order (1, 2, 3)
+      const videoUris = completedOperations
+        .sort((a, b) => a.segmentNumber - b.segmentNumber)
+        .map(op => op.videoUri)
+        .filter(uri => uri); // Filter out any undefined URIs
+      
+      if (videoUris.length !== 3) {
+        throw new Error('Not all videos are available for concatenation');
+      }
+
+      const response = await fetch('/api/concatenate-videos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoUris,
+          sessionId
+        })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setConcatenationStatus('ready');
+        setOverallStatus('✨ All videos combined! Ready to download.');
+      } else {
+        throw new Error(data.error || 'Failed to concatenate videos');
+      }
+    } catch (error) {
+      console.error('Concatenation error:', error);
+      setConcatenationStatus('error');
+      setOverallStatus(`❌ Error combining videos: ${error}`);
+    }
+  };
+
+  const downloadConcatenatedVideo = () => {
+    if (sessionId && concatenationStatus === 'ready') {
+      window.open(`/api/concatenate-videos?sessionId=${encodeURIComponent(sessionId)}`, '_blank');
+      setConcatenationStatus('idle'); // Reset after download
+    }
   };
 
   const updateDialogue = (index: number, value: string) => {
@@ -245,6 +302,45 @@ export default function ThreeVideosGenerator() {
           </div>
         )}
 
+        {/* Concatenated Video Download */}
+        {concatenationStatus !== 'idle' && (
+          <div className="p-6 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border-2 border-purple-200">
+            <h3 className="text-xl font-semibold mb-4 text-center">Combined Video</h3>
+            
+            {concatenationStatus === 'concatenating' && (
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-4"></div>
+                <p className="text-purple-700">Combining all 3 videos into one file...</p>
+              </div>
+            )}
+            
+            {concatenationStatus === 'ready' && (
+              <div className="text-center">
+                <div className="mb-4">
+                  <span className="text-4xl">🎬</span>
+                  <p className="text-green-700 font-medium mt-2">Your combined video is ready!</p>
+                  <p className="text-sm text-gray-600 mt-1">All 3 videos have been seamlessly combined in order</p>
+                </div>
+                <button
+                  onClick={downloadConcatenatedVideo}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 px-8 rounded-lg hover:from-purple-700 hover:to-blue-700 font-medium text-lg shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-3 mx-auto"
+                >
+                  <span>📥</span>
+                  Download Combined Video
+                </button>
+              </div>
+            )}
+            
+            {concatenationStatus === 'error' && (
+              <div className="text-center">
+                <span className="text-4xl">❌</span>
+                <p className="text-red-700 font-medium mt-2">Error combining videos</p>
+                <p className="text-sm text-gray-600 mt-1">You can still download individual videos below</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Individual Video Results */}
         {operations.length > 0 && (
           <div className="grid md:grid-cols-3 gap-6">
@@ -315,6 +411,7 @@ export default function ThreeVideosGenerator() {
           <li>Optionally provide an image URL for visual reference</li>
           <li>All 3 videos generate simultaneously with the same character and camera but different dialogue</li>
           <li>Each video appears as it completes and can be viewed/downloaded independently</li>
+          <li><strong>🎬 NEW:</strong> Once all videos complete, they automatically combine into one seamless video for easy download!</li>
         </ol>
         <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <h3 className="font-medium text-blue-800 mb-2">Prompt Structure Example:</h3>
