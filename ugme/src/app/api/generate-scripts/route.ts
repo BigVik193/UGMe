@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
-import { createClient } from '@/lib/supabase-server'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -88,7 +88,7 @@ async function generateScriptSegments(productTitle: string, productDescription: 
 
 export async function POST(request: NextRequest) {
   try {
-    const { productId } = await request.json()
+    const { productId, userId } = await request.json()
 
     if (!productId) {
       return NextResponse.json(
@@ -97,23 +97,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get user from session
-    const supabase = await createClient()
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
-    if (sessionError || !session?.user) {
+    if (!userId) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'User ID is required' },
         { status: 401 }
       )
     }
 
-    // Get product from database
-    const { data: product, error: productError } = await supabase
+    // Get product from database using service role
+    const { data: product, error: productError } = await supabaseAdmin
       .from('products')
       .select('*')
       .eq('id', productId)
-      .eq('user_id', session.user.id)
+      .eq('user_id', userId)
       .single()
 
     if (productError || !product) {
@@ -130,8 +126,8 @@ export async function POST(request: NextRequest) {
       product.product_description || ''
     )
 
-    // Update product in database
-    await supabase
+    // Update product in database using service role
+    await supabaseAdmin
       .from('products')
       .update({
         selected_image_url: selectedImage.url,

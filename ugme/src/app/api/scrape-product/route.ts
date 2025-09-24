@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { chromium, type Browser, type Page } from 'playwright'
 import * as cheerio from 'cheerio'
-import { createClient } from '@/lib/supabase-server'
+import { supabaseAdmin } from '@/lib/supabase/server'
 
 interface ScrapedProduct {
   title: string
@@ -10,21 +10,25 @@ interface ScrapedProduct {
 }
 
 async function scrapeAmazonProduct(url: string): Promise<ScrapedProduct> {
+  console.log('scrapeAmazonProduct: Starting with URL:', url)
   let browser: Browser | null = null
   
   try {
     // Simple browser launch
+    console.log('scrapeAmazonProduct: Launching browser...')
     browser = await chromium.launch({
       headless: true
     })
 
     const page: Page = await browser.newPage()
+    console.log('scrapeAmazonProduct: Browser launched, navigating to page...')
 
     // Navigate to the Amazon product page
     await page.goto(url, {
       waitUntil: 'networkidle',
       timeout: 30000
     })
+    console.log('scrapeAmazonProduct: Navigation completed')
 
     // Get page content
     const content = await page.content()
@@ -70,35 +74,45 @@ async function scrapeAmazonProduct(url: string): Promise<ScrapedProduct> {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('=== SCRAPE-PRODUCT API ROUTE START ===')
+  
   try {
-    const { amazonUrl } = await request.json()
+    const { amazonUrl, userId } = await request.json()
+    console.log('Amazon URL received:', amazonUrl)
+    console.log('User ID received:', userId)
 
     if (!amazonUrl) {
+      console.log('No Amazon URL provided')
       return NextResponse.json(
         { error: 'Amazon URL is required' },
         { status: 400 }
       )
     }
 
-    // Get user from session
-    const supabase = await createClient()
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-
-    if (sessionError || !session?.user) {
+    if (!userId) {
+      console.log('No user ID provided')
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'User ID is required' },
         { status: 401 }
       )
     }
 
-    // Scrape the product
-    const scrapedData = await scrapeAmazonProduct(amazonUrl)
+    console.log('Using service role client for database operations')
 
-    // Save to database
-    const { data: product, error: dbError } = await supabase
+    // Scrape the product
+    console.log('Starting Amazon product scraping...')
+    const scrapedData = await scrapeAmazonProduct(amazonUrl)
+    console.log('Scraping completed. Data:', {
+      title: scrapedData.title.substring(0, 100) + '...',
+      descriptionLength: scrapedData.description.length,
+      imageCount: scrapedData.imageUrls.length
+    })
+
+    // Save to database using service role client
+    const { data: product, error: dbError } = await supabaseAdmin
       .from('products')
       .insert({
-        user_id: session.user.id,
+        user_id: userId,
         amazon_url: amazonUrl,
         product_title: scrapedData.title,
         product_description: scrapedData.description,

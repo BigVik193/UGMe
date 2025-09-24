@@ -36,8 +36,7 @@ export default function Dashboard() {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
-        body: JSON.stringify({ amazonUrl }),
+        body: JSON.stringify({ amazonUrl, userId: user?.id }),
       })
 
       const data = await response.json()
@@ -67,8 +66,7 @@ export default function Dashboard() {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
-        body: JSON.stringify({ productId: scrapedProduct.id }),
+        body: JSON.stringify({ productId: scrapedProduct.id, userId: user?.id }),
       })
 
       const data = await response.json()

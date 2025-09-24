@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function VideoGenerator() {
+  const { user } = useAuth();
   const [prompt, setPrompt] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [operationName, setOperationName] = useState('');
@@ -22,7 +24,8 @@ export default function VideoGenerator() {
         },
         body: JSON.stringify({
           prompt,
-          imageUrl: imageUrl || undefined
+          imageUrl: imageUrl || undefined,
+          userId: user?.id
         })
       });
 
