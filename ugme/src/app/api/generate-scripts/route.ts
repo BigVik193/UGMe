@@ -6,50 +6,11 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-async function selectBestImage(imageUrls: string[]): Promise<{ url: string; index: number; reasoning: string }> {
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `Select the best image for UGC video from these ${imageUrls.length} images. Return JSON: {"selectedImageIndex": <number>, "reasoning": "<brief explanation>"}`
-            },
-            ...imageUrls.map((imageUrl) => ({
-              type: "image_url" as const,
-              image_url: {
-                url: imageUrl,
-                detail: "low" as const
-              }
-            }))
-          ]
-        }
-      ],
-      max_tokens: 150,
-      temperature: 0.3
-    })
-
-    const content = response.choices[0]?.message?.content
-    if (content) {
-      const parsed = JSON.parse(content)
-      return {
-        url: imageUrls[parsed.selectedImageIndex] || imageUrls[0],
-        index: parsed.selectedImageIndex || 0,
-        reasoning: parsed.reasoning || 'Selected based on quality'
-      }
-    }
-  } catch (error) {
-    console.error('Image selection error:', error)
-  }
-  
-  // Fallback
+function selectFirstImage(imageUrls: string[]): { url: string; index: number; reasoning: string } {
   return {
-    url: imageUrls[0],
+    url: imageUrls[0] || '',
     index: 0,
-    reasoning: 'Selected first image as fallback'
+    reasoning: 'Selected first image from list'
   }
 }
 
@@ -119,8 +80,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Select best image and generate scripts
-    const selectedImage = await selectBestImage(product.product_image_urls || [])
+    // Select first image and generate scripts
+    const selectedImage = selectFirstImage(product.product_image_urls || [])
     const scriptSegments = await generateScriptSegments(
       product.product_title || 'product',
       product.product_description || ''
