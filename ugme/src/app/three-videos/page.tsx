@@ -12,17 +12,24 @@ interface VideoOperation {
 }
 
 export default function ThreeVideosGenerator() {
-  const [prompts, setPrompts] = useState(['', '', '']);
+  const [character, setCharacter] = useState('A friendly, tall white-furred Yeti dressed casually, green hoodie, sneakers, etc, walking in a field/green area in a city. He is holding the toy from the attached image.');
+  const [camera, setCamera] = useState('POV handheld selfie shot, camera held at arm\'s length, slight natural shake as the Yeti strolls forward through the room.');
+  const [dialogues, setDialogues] = useState(['', '', '']);
   const [imageUrl, setImageUrl] = useState('');
   const [operations, setOperations] = useState<VideoOperation[]>([]);
   const [loading, setLoading] = useState(false);
   const [overallStatus, setOverallStatus] = useState('');
 
   const generateThreeVideos = async () => {
-    if (prompts.some(p => !p.trim())) {
-      setOverallStatus('All three prompts are required');
+    if (!character.trim() || !camera.trim() || dialogues.some(d => !d.trim())) {
+      setOverallStatus('Character, camera, and all three dialogues are required');
       return;
     }
+
+    // Combine character, camera, and dialogue into full prompts
+    const fullPrompts = dialogues.map(dialogue => 
+      `Character: ${character}\nCamera: ${camera}\nDialogue: ${dialogue}`
+    );
 
     setLoading(true);
     setOverallStatus('Starting 3 video generations...');
@@ -34,7 +41,7 @@ export default function ThreeVideosGenerator() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompts: prompts.map(p => p.trim()),
+          prompts: fullPrompts,
           imageUrl: imageUrl || undefined
         })
       });
@@ -123,10 +130,10 @@ export default function ThreeVideosGenerator() {
     });
   };
 
-  const updatePrompt = (index: number, value: string) => {
-    const newPrompts = [...prompts];
-    newPrompts[index] = value;
-    setPrompts(newPrompts);
+  const updateDialogue = (index: number, value: string) => {
+    const newDialogues = [...dialogues];
+    newDialogues[index] = value;
+    setDialogues(newDialogues);
   };
 
   const getVideoSrc = (videoUri: string) => {
@@ -171,27 +178,60 @@ export default function ThreeVideosGenerator() {
           </p>
         </div>
 
-        {/* Three Prompt Inputs */}
-        <div className="grid md:grid-cols-3 gap-6">
-          {prompts.map((prompt, index) => (
-            <div key={index}>
-              <label className="block text-sm font-medium mb-2">
-                Video {index + 1} Prompt
-              </label>
-              <textarea
-                value={prompt}
-                onChange={(e) => updatePrompt(index, e.target.value)}
-                placeholder={`Describe video ${index + 1}...`}
-                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                rows={4}
-              />
-            </div>
-          ))}
+        {/* Character Description */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Character Description (used for all 3 videos)
+          </label>
+          <textarea
+            value={character}
+            onChange={(e) => setCharacter(e.target.value)}
+            placeholder="Describe the character, their appearance, clothing, actions..."
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            rows={3}
+          />
+        </div>
+
+        {/* Camera Description */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Camera Setup (used for all 3 videos)
+          </label>
+          <textarea
+            value={camera}
+            onChange={(e) => setCamera(e.target.value)}
+            placeholder="Describe the camera angle, movement, shot type..."
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            rows={2}
+          />
+        </div>
+
+        {/* Three Dialogue Inputs */}
+        <div>
+          <label className="block text-sm font-medium mb-4">
+            Dialogue for Each Video
+          </label>
+          <div className="grid md:grid-cols-3 gap-4">
+            {dialogues.map((dialogue, index) => (
+              <div key={index}>
+                <label className="block text-sm font-medium mb-2">
+                  Video {index + 1} Dialogue
+                </label>
+                <textarea
+                  value={dialogue}
+                  onChange={(e) => updateDialogue(index, e.target.value)}
+                  placeholder={`What the character says in video ${index + 1}...`}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={3}
+                />
+              </div>
+            ))}
+          </div>
         </div>
 
         <button
           onClick={generateThreeVideos}
-          disabled={loading || prompts.some(p => !p.trim())}
+          disabled={loading || !character.trim() || !camera.trim() || dialogues.some(d => !d.trim())}
           className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium"
         >
           {loading ? 'Generating 3 Videos...' : 'Generate All 3 Videos'}
@@ -217,8 +257,8 @@ export default function ThreeVideosGenerator() {
                   </span>
                 </div>
                 
-                <p className="text-sm text-gray-600 mb-4 line-clamp-3">
-                  {operation.prompt}
+                <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                  <strong>Dialogue:</strong> {dialogues[operation.segmentNumber - 1]}
                 </p>
                 
                 {operation.status === 'completed' && operation.videoUri && (
@@ -269,15 +309,21 @@ export default function ThreeVideosGenerator() {
       <div className="mt-12 p-6 bg-gray-50 rounded-lg">
         <h2 className="text-xl font-semibold mb-4">How it Works</h2>
         <ol className="list-decimal list-inside space-y-2 text-sm">
-          <li>Enter three different prompts for three separate videos</li>
-          <li>Optionally provide an image URL that will be used for all 3 videos</li>
-          <li>All 3 videos are generated simultaneously (in parallel)</li>
-          <li>Each video appears as it completes (they may finish at different times)</li>
-          <li>View and download each video independently</li>
+          <li>Set up your <strong>Character</strong> description (appearance, clothing, actions)</li>
+          <li>Define the <strong>Camera</strong> setup (angle, movement, shot type)</li>
+          <li>Enter three different <strong>Dialogues</strong> for each video segment</li>
+          <li>Optionally provide an image URL for visual reference</li>
+          <li>All 3 videos generate simultaneously with the same character and camera but different dialogue</li>
+          <li>Each video appears as it completes and can be viewed/downloaded independently</li>
         </ol>
-        <p className="text-sm text-gray-600 mt-4">
-          <strong>Note:</strong> Each video is 8 seconds long and generated independently. This is faster than sequential generation.
-        </p>
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h3 className="font-medium text-blue-800 mb-2">Prompt Structure Example:</h3>
+          <div className="text-sm text-blue-700 space-y-1">
+            <p><strong>Character:</strong> A friendly Yeti in green hoodie walking in a city field...</p>
+            <p><strong>Camera:</strong> POV handheld selfie shot, natural shake as character moves...</p>
+            <p><strong>Dialogue:</strong> "Hey guys, I just bought these cool action figures."</p>
+          </div>
+        </div>
       </div>
     </div>
   );

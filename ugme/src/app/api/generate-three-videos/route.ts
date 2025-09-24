@@ -2,14 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompts, imageUrl } = await request.json();
+    const { dialogues, imageUrl } = await request.json();
 
-    if (!prompts || !Array.isArray(prompts) || prompts.length !== 3) {
+    if (!dialogues || !Array.isArray(dialogues) || dialogues.length !== 3) {
       return NextResponse.json(
-        { error: 'Exactly 3 prompts are required' },
+        { error: 'Exactly 3 dialogues are required' },
         { status: 400 }
       );
     }
+
+    // Hardcoded character and camera setup
+    const character = 'A friendly, tall white-furred Yeti dressed casually, green hoodie, sneakers, etc, walking in a field/green area in a city. He is holding the toy from the attached image.';
+    const camera = 'POV handheld selfie shot, camera held at arm\'s length, slight natural shake as the Yeti strolls forward through the room.';
+
+    // Combine character, camera, and each dialogue into full prompts
+    const fullPrompts = dialogues.map((dialogue: string) => 
+      `Character: ${character}\nCamera: ${camera}\nDialogue: ${dialogue}`
+    );
 
     if (!process.env.GOOGLE_GEMINI_API_KEY) {
       return NextResponse.json(
@@ -19,7 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate all 3 videos in parallel
-    const videoPromises = prompts.map((prompt, index) => 
+    const videoPromises = fullPrompts.map((prompt, index) => 
       generateSingleVideo(prompt, imageUrl, index + 1)
     );
 
