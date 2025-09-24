@@ -30,7 +30,17 @@ async function generateScriptSegments(productTitle: string, productDescription: 
 
     const content = response.choices[0]?.message?.content
     if (content) {
-      const segments = JSON.parse(content)
+      // Remove markdown code blocks if present
+      let cleanContent = content.trim()
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '')
+      }
+      
+      console.log('Cleaned content for JSON parsing:', cleanContent)
+      
+      const segments = JSON.parse(cleanContent)
       if (Array.isArray(segments) && segments.length === 3) {
         return segments
       }
