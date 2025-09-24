@@ -13,6 +13,8 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [isGeneratingScripts, setIsGeneratingScripts] = useState(false)
   const [generatedContent, setGeneratedContent] = useState<any>(null)
+  const [isGeneratingVideos, setIsGeneratingVideos] = useState(false)
+  const [videoGenerationResult, setVideoGenerationResult] = useState<any>(null)
 
   useEffect(() => {
     if (!loading && !user) {
@@ -80,6 +82,90 @@ export default function Dashboard() {
       setError(err instanceof Error ? err.message : 'Failed to generate scripts')
     } finally {
       setIsGeneratingScripts(false)
+    }
+  }
+
+  const handleGenerateVideos = async () => {
+    if (!generatedContent?.scriptSegments || !generatedContent?.selectedImage?.url || !scrapedProduct?.id) return
+
+    setIsGeneratingVideos(true)
+    setError('')
+
+    try {
+      const response = await fetch('/api/create-video-project', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          productId: scrapedProduct.id,
+          userId: user?.id
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create video project')
+      }
+
+      // Redirect to the video generation page with data
+      const params = new URLSearchParams({
+        operations: JSON.stringify(data.operations),
+        scripts: JSON.stringify(data.scriptSegments),
+        imageUrl: data.selectedImageUrl
+      })
+      router.push(`/${scrapedProduct.id}/videos?${params.toString()}`)
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create video project')
+      setIsGeneratingVideos(false)
+    }
+  }
+
+  const pollVideoStatus = async (operationName: string, segmentNumber: number) => {
+    try {
+      const response = await fetch(`/api/check-operation?operation=${encodeURIComponent(operationName)}`)
+      const data = await response.json()
+      
+      if (data.status === 'completed') {
+        setVideoGenerationResult((prev: any) => {
+          if (!prev) return null
+          
+          const updatedOperations = prev.operations.map((op: any) => 
+            op.segmentNumber === segmentNumber 
+              ? { ...op, status: 'completed', videoUri: data.videoUri }
+              : op
+          )
+          
+          // Check if all videos are completed
+          const allCompleted = updatedOperations.every((op: any) => op.status === 'completed')
+          if (allCompleted) {
+            setIsGeneratingVideos(false)
+          }
+          
+          return { ...prev, operations: updatedOperations }
+        })
+      } else if (data.status === 'error') {
+        setVideoGenerationResult((prev: any) => {
+          if (!prev) return null
+          
+          const updatedOperations = prev.operations.map((op: any) => 
+            op.segmentNumber === segmentNumber 
+              ? { ...op, status: 'error', error: data.error }
+              : op
+          )
+          
+          return { ...prev, operations: updatedOperations }
+        })
+        setIsGeneratingVideos(false)
+      } else {
+        // Still generating, poll again in 10 seconds
+        setTimeout(() => pollVideoStatus(operationName, segmentNumber), 10000)
+      }
+    } catch (error) {
+      console.error(`Error polling video ${segmentNumber}:`, error)
     }
   }
 
@@ -281,15 +367,33 @@ export default function Dashboard() {
                     
                     <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
                       <h4 className="font-medium text-blue-900 mb-2">🎥 Ready for Video Creation!</h4>
-                      <p className="text-sm text-blue-700">
+                      <p className="text-sm text-blue-700 mb-4">
                         Use the selected image and these script segments to create your UGC video. 
                         Each segment is designed to be about 8 seconds when spoken naturally.
                       </p>
+                      
+                      {!videoGenerationResult && (
+                        <button
+                          onClick={handleGenerateVideos}
+                          disabled={isGeneratingVideos}
+                          className="w-full bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white py-2 px-4 rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isGeneratingVideos ? (
+                            <div className="flex items-center justify-center">
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                              Generating Videos...
+                            </div>
+                          ) : (
+                            '🎬 Generate 3 UGC Videos'
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
             )}
+
 
             <div className="bg-white rounded-3xl shadow-xl p-8 border border-purple-100">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">Your Recent Projects</h2>
